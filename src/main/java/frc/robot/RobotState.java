@@ -4,6 +4,7 @@ import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.drive.Drive.DriveProfiles;
 import frc.robot.util.SubsystemProfiles;
 import java.util.HashMap;
+import org.littletonrobotics.junction.Logger;
 
 public class RobotState {
 
@@ -26,15 +27,20 @@ public class RobotState {
     m_profiles = new SubsystemProfiles<>(hash, RobotAction.kTeleopDefault);
   }
 
+  public void updateRobotState() {
+    m_profiles.getPeriodicFunctionTimed().run();
+    Logger.recordOutput("RobotAction", m_profiles.getCurrentProfile());
+  }
+
   public void updateRobotAction(RobotAction action) {
-    DriveProfiles newDriveState = DriveProfiles.kTeleopDefault;
+    DriveProfiles newDriveState = DriveProfiles.kDefault;
 
     switch (action) {
       case kAutoDefault:
-        newDriveState = DriveProfiles.kAutoDefault;
+        newDriveState = DriveProfiles.kAutoAlign;
         break;
       case kTeleopDefault:
-        newDriveState = DriveProfiles.kTeleopDefault;
+        newDriveState = DriveProfiles.kDefault;
         break;
       default:
         break;

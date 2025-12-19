@@ -172,7 +172,7 @@ public class DriveCommands {
             () -> {
               velocitySamples.clear();
               voltageSamples.clear();
-              drive.updateProfile(DriveProfiles.kTeleopDefault);
+              drive.updateProfile(DriveProfiles.kDefault);
             }),
 
         // Allow modules to orient
@@ -230,7 +230,7 @@ public class DriveCommands {
             Commands.runOnce(
                 () -> {
                   limiter.reset(0.0);
-                  drive.updateProfile(DriveProfiles.kTeleopDefault);
+                  drive.updateProfile(DriveProfiles.kDefault);
                 }),
 
             // Turn in place, accelerating up to full speed

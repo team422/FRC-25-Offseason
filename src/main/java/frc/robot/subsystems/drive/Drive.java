@@ -1,60 +1,73 @@
 package frc.robot.subsystems.drive;
 
+import static edu.wpi.first.units.Units.Degrees;
+import static edu.wpi.first.units.Units.Meters;
+import static edu.wpi.first.units.Units.Radians;
+import static edu.wpi.first.units.Units.Volts;
+
 import edu.wpi.first.hal.HALUtil;
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Transform2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Twist2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.units.measure.Angle;
+import edu.wpi.first.units.measure.Distance;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import frc.lib.littletonUtils.EqualsUtil;
 import frc.lib.littletonUtils.LoggedTunableNumber;
 import frc.lib.littletonUtils.PoseEstimator;
+import frc.lib.littletonUtils.PoseEstimator.TimestampedVisionUpdate;
+import frc.robot.Constants;
 import frc.robot.Constants.DriveConstants;
 import frc.robot.util.AlertManager;
 import frc.robot.util.MeshedDrivingController;
 import frc.robot.util.SubsystemProfiles;
-
-import static edu.wpi.first.units.Units.Volts;
-
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
 
-import frc.robot.Constants;
-
 public class Drive extends SubsystemBase {
-
   static final Lock m_odometryLock = new ReentrantLock();
   private final GyroIO m_gyroIO;
   public final GyroIOInputsAutoLogged m_gyroInputs = new GyroIOInputsAutoLogged();
 
   private final Module[] m_modules = new Module[4]; // FL, FR, BL, BR
+  private final SysIdRoutine m_sysId;
   private Rotation2d m_lastGyroYaw = new Rotation2d();
 
   private Alert m_gyroDisconnectedAlert = new Alert("Gyro Disconnected", AlertType.kError);
 
   public enum DriveProfiles {
-    kAutoDefault,
-    kTeleopDefault,
+    kDefault,
+    kPathplanner,
+    kAutoAlign,
+    kDriveToPoint,
+    kCharacterization,
+    kMeshedUserControls,
     kStop,
-    kCharacterization
   }
 
   private SubsystemProfiles<DriveProfiles> m_profiles;
+
   private ChassisSpeeds m_desiredChassisSpeeds = new ChassisSpeeds();
   private ChassisSpeeds m_desiredAutoChassisSpeeds = null;
 
@@ -114,13 +127,33 @@ public class Drive extends SubsystemBase {
     // Start threads (no-op for each if no signals have been created)
     PhoenixOdometryThread.getInstance().start();
 
-    Map<DriveProfiles, Runnable> periodicHash = new HashMap<>();
-    periodicHash.put(DriveProfiles.kTeleopDefault, this::teleopDefaultPeriodic);
-    periodicHash.put(DriveProfiles.kAutoDefault, this::autoDefaultPeriodic);
-    periodicHash.put(DriveProfiles.kStop, this::stopPeriodic);
-    periodicHash.put(DriveProfiles.kCharacterization, this::characterizationPeriodic);
+    // Configure SysId
+    m_sysId =
+        new SysIdRoutine(
+            new SysIdRoutine.Config(
+                null,
+                null,
+                null,
+                (state) -> Logger.recordOutput("Drive/SysIdState", state.toString())),
+            new SysIdRoutine.Mechanism(
+                (voltage) -> {
+                  for (int i = 0; i < 4; i++) {
+                    m_modules[i].runCharacterization(voltage.in(Volts));
+                  }
+                },
+                null,
+                this));
 
-    m_profiles = new SubsystemProfiles<>(periodicHash, DriveProfiles.kTeleopDefault);
+    Map<DriveProfiles, Runnable> periodicHash = new HashMap<>();
+    periodicHash.put(DriveProfiles.kDefault, this::defaultPeriodic);
+    periodicHash.put(DriveProfiles.kPathplanner, this::pathplannerPeriodic);
+    periodicHash.put(DriveProfiles.kAutoAlign, this::autoAlignPeriodic);
+    periodicHash.put(DriveProfiles.kDriveToPoint, this::driveToPointPeriodic);
+    periodicHash.put(DriveProfiles.kCharacterization, this::characterizationPeriodic);
+    periodicHash.put(DriveProfiles.kMeshedUserControls, this::meshedUserControlsPeriodic);
+    periodicHash.put(DriveProfiles.kStop, this::stopPeriodic);
+
+    m_profiles = new SubsystemProfiles<>(periodicHash, DriveProfiles.kDefault);
 
     m_headingController.enableContinuousInput(-Math.PI, Math.PI);
 
@@ -138,7 +171,7 @@ public class Drive extends SubsystemBase {
     double start = HALUtil.getFPGATime();
 
     double updateInputsStart = HALUtil.getFPGATime();
-    m_odometryLock.lock(); 
+    m_odometryLock.lock(); // Prevents odometry updates while reading data
     m_gyroIO.updateInputs(m_gyroInputs);
     for (var module : m_modules) {
       module.updateInputs();
@@ -286,15 +319,7 @@ public class Drive extends SubsystemBase {
     Logger.recordOutput("PeriodicTime/Drive", (HALUtil.getFPGATime() - start) / 1000.0);
   }
 
-  public void stopPeriodic() {
-    runVelocity(new ChassisSpeeds());
-  }
-
-  public void autoDefaultPeriodic() {
-    runVelocity(new ChassisSpeeds());
-  }
-
-  public void teleopDefaultPeriodic() {
+  public void defaultPeriodic() {
     runVelocity(m_desiredChassisSpeeds);
 
     Logger.recordOutput("Drive/DesiredHeading", m_desiredHeading.getDegrees());
@@ -302,7 +327,7 @@ public class Drive extends SubsystemBase {
     Logger.recordOutput("Drive/DesiredSpeeds", m_desiredChassisSpeeds);
     Logger.recordOutput("Drive/MeasuredSpeeds", getChassisSpeeds());
   }
-  
+
   public void characterizationPeriodic() {
     Logger.recordOutput("Drive/DesiredHeading", m_desiredHeading.getDegrees());
     Logger.recordOutput("Drive/CurrentHeading", getPose().getRotation().getDegrees());
@@ -310,11 +335,143 @@ public class Drive extends SubsystemBase {
     Logger.recordOutput("Drive/MeasuredSpeeds", getChassisSpeeds());
   }
 
+  public void pathplannerPeriodic() {
+    m_desiredChassisSpeeds = m_desiredAutoChassisSpeeds;
+    if (m_desiredAutoChassisSpeeds == null) {
+      m_desiredChassisSpeeds = new ChassisSpeeds();
+    }
+
+    defaultPeriodic();
+  }
+
+  public void meshedUserControlsPeriodic() {
+    m_desiredChassisSpeeds =
+        ChassisSpeeds.fromFieldRelativeSpeeds(
+            m_meshedController.calculateSpeeds(
+                ChassisSpeeds.fromRobotRelativeSpeeds(m_userChassisSpeeds, getRotation()),
+                getPose()),
+            getRotation());
+
+    defaultPeriodic();
+  }
+
+  public void autoAlignPeriodic() {
+    m_desiredChassisSpeeds = calculateAutoAlignSpeeds();
+
+    defaultPeriodic();
+  }
+
+  public void stopPeriodic() {
+    runVelocity(new ChassisSpeeds());
+  }
+
+  public void driveToPointPeriodic() {
+    Pose2d currentPose = getPose();
+
+    double currentDistance =
+        currentPose.getTranslation().getDistance(m_driveToPointTargetPose.getTranslation());
+
+    if (EqualsUtil.epsilonEquals(0, m_driveToPointTargetPose.getX())) {
+      Logger.recordOutput("Drive/ZeroTarget", Timer.getFPGATimestamp());
+      m_desiredChassisSpeeds = new ChassisSpeeds();
+      defaultPeriodic();
+
+      return;
+    }
+    ChassisSpeeds currSpeeds = getChassisSpeeds();
+    double currVelocity = Math.hypot(currSpeeds.vxMetersPerSecond, currSpeeds.vyMetersPerSecond);
+
+    PIDController driveController =
+        DriverStation.isAutonomous() ? m_autoDriveController : m_driveController;
+
+    double pidVelocity = driveController.calculate(currentDistance, 0.0);
+    if (currentDistance < driveController.getErrorTolerance()) {
+      pidVelocity = 0.0;
+    }
+
+    double headingError =
+        currentPose.getRotation().minus(m_driveToPointTargetPose.getRotation()).getRadians();
+    double headingVelocity =
+        m_headingController.calculate(
+            currentPose.getRotation().getRadians(),
+            m_driveToPointTargetPose.getRotation().getRadians());
+
+    if (Math.abs(headingError) < m_headingController.getErrorTolerance()) {
+      headingVelocity = 0.0;
+    }
+
+    // thank you kent
+    pidVelocity =
+        MathUtil.clamp(
+            pidVelocity,
+            -DriveConstants.kMaxDriveToPointSpeed,
+            DriveConstants.kMaxDriveToPointSpeed);
+
+    // evil math
+    // blame 254 for making this because i dont fully understand it
+    // update: i understand it now :)
+    Translation2d driveVelocity =
+        new Pose2d(
+                0.0,
+                0.0,
+                currentPose
+                    .getTranslation()
+                    .minus(m_driveToPointTargetPose.getTranslation())
+                    .getAngle())
+            .transformBy(new Transform2d(pidVelocity, 0.0, new Rotation2d()))
+            .getTranslation();
+    ChassisSpeeds speeds =
+        ChassisSpeeds.fromFieldRelativeSpeeds(
+            driveVelocity.getX(), driveVelocity.getY(), headingVelocity, currentPose.getRotation());
+    m_desiredChassisSpeeds = speeds;
+
+    Logger.recordOutput("DriveToPoint/TargetPose", m_driveToPointTargetPose);
+    Logger.recordOutput("DriveToPoint/DriveDistance", currentDistance);
+    Logger.recordOutput("DriveToPoint/HeadingError", headingError);
+    Logger.recordOutput(
+        "DriveToPoint/TargetTheta",
+        currentPose.getTranslation().minus(m_driveToPointTargetPose.getTranslation()).getAngle());
+
+    Logger.recordOutput("DriveToPoint/PIDVelocity", pidVelocity);
+    Logger.recordOutput("DriveToPoint/DriveVelocity", currVelocity);
+    Logger.recordOutput("DriveToPoint/HeadingVelocity", headingVelocity);
+    Logger.recordOutput("DriveToPoint/DriveVelocityX", driveVelocity.getX());
+    Logger.recordOutput("DriveToPoint/DriveVelocityY", driveVelocity.getY());
+
+    Logger.recordOutput("DriveToPoint/DriveSpeeds", speeds);
+
+    if (!DriverStation.isAutonomous()) {
+      if (driveToPointWithinTolerance()) {
+        updateProfile(DriveProfiles.kDefault);
+      }
+    }
+
+    defaultPeriodic();
+  }
+
+  public ChassisSpeeds calculateAutoAlignSpeeds() {
+    if (m_desiredHeading != null) {
+      Logger.recordOutput("AutoAlignHeading", m_desiredHeading);
+      double output =
+          m_headingController.calculate(
+              getPose().getRotation().getRadians(), m_desiredHeading.getRadians());
+      m_desiredChassisSpeeds.omegaRadiansPerSecond = output;
+    }
+
+    return m_desiredChassisSpeeds;
+  }
+
+  /**
+   * Runs the drive at the desired velocity.
+   *
+   * @param speeds Speeds in meters/sec
+   */
   @SuppressWarnings("unused")
   public void runVelocity(ChassisSpeeds speeds) {
     // Calculate module setpoints
     ChassisSpeeds discreteSpeeds = ChassisSpeeds.discretize(speeds, 0.02);
 
+    // "Universal negative sign" (should not be required but i'll leave it as an option)
     if (RobotBase.isReal() && DriveConstants.kRealReversed) {
       if (DriverStation.isTeleopEnabled()) {
         discreteSpeeds.vxMetersPerSecond = -discreteSpeeds.vxMetersPerSecond;
@@ -338,7 +495,6 @@ public class Drive extends SubsystemBase {
     Logger.recordOutput("SwerveStates/Setpoints", setpointStates);
   }
 
-  
   public void setDesiredChassisSpeeds(ChassisSpeeds speeds) {
     Logger.recordOutput("Drive/speed", speeds);
     m_desiredChassisSpeeds = speeds;
@@ -412,6 +568,36 @@ public class Drive extends SubsystemBase {
     stop();
   }
 
+  /** Returns a command to run a quasistatic test in the specified direction. */
+  public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
+    return m_sysId.quasistatic(direction);
+  }
+
+  /** Returns a command to run a dynamic test in the specified direction. */
+  public Command sysIdDynamic(SysIdRoutine.Direction direction) {
+    return m_sysId.dynamic(direction);
+  }
+
+  /** Returns the module states (turn angles and drive velocities) for all of the modules. */
+  @AutoLogOutput(key = "SwerveStates/Measured")
+  private SwerveModuleState[] getModuleStates() {
+    SwerveModuleState[] states = new SwerveModuleState[4];
+    for (int i = 0; i < 4; i++) {
+      states[i] = m_modules[i].getState();
+    }
+    return states;
+  }
+
+  /** Returns the module positions (turn angles and drive positions) for all of the modules. */
+  @SuppressWarnings("unused")
+  private SwerveModulePosition[] getModulePositions() {
+    SwerveModulePosition[] states = new SwerveModulePosition[4];
+    for (int i = 0; i < 4; i++) {
+      states[i] = m_modules[i].getPosition();
+    }
+    return states;
+  }
+
   /** Returns the current odometry pose. */
   @AutoLogOutput(key = "Odometry/Robot")
   public Pose2d getPose() {
@@ -423,20 +609,40 @@ public class Drive extends SubsystemBase {
     return getPose().getRotation();
   }
 
+  /** Resets the current odometry pose. */
   public void setPose(Pose2d pose) {
     m_poseEstimator.resetPose(pose);
   }
 
-  @AutoLogOutput(key = "SwerveStates/Measured")
-  private SwerveModuleState[] getModuleStates() {
-    SwerveModuleState[] states = new SwerveModuleState[4];
-    for (int i = 0; i < 4; i++) {
-      states[i] = m_modules[i].getState();
-    }
-    return states;
+  /**
+   * Adds vision observations to the pose estimator.
+   *
+   * @param observations The vision observations to add.
+   */
+  public void addTimestampedVisionObservations(List<TimestampedVisionUpdate> observations) {
+    m_poseEstimator.addVisionData(observations);
   }
 
-  
+  public void updateProfile(DriveProfiles newProfile) {
+    m_profiles.setCurrentProfile(newProfile);
+
+    if (newProfile == DriveProfiles.kMeshedUserControls) {}
+  }
+
+  public boolean headingWithinTolerance() {
+    return Math.abs(m_headingController.getError()) < Units.degreesToRadians(5);
+  }
+
+  public void setModuleCurrentLimits(double supplyLimit) {
+    for (var module : m_modules) {
+      module.setCurrentLimits(supplyLimit);
+    }
+  }
+
+  public DriveProfiles getCurrentProfile() {
+    return m_profiles.getCurrentProfile();
+  }
+
   /** Runs the drive in a straight line with the specified drive output. */
   public void runCharacterization(double output) {
     if (m_profiles.getCurrentProfile() != DriveProfiles.kCharacterization) {
@@ -469,11 +675,49 @@ public class Drive extends SubsystemBase {
     return m_rawGyroRotation;
   }
 
-  public DriveProfiles getCurrentProfile() {
-    return m_profiles.getCurrentProfile();
+  public boolean driveToPointWithinTolerance() {
+    return driveToPointWithinTolerance(null, null);
   }
 
-  public void updateProfile(DriveProfiles newProfile) {
-    m_profiles.setCurrentProfile(newProfile);
+  public boolean driveToPointWithinTolerance(Distance linearTolerance, Angle headingTolerance) {
+    if (linearTolerance == null) {
+      linearTolerance =
+          Meters.of(
+              DriverStation.isAutonomous()
+                  ? m_autoDriveController.getErrorTolerance()
+                  : m_driveController.getErrorTolerance());
+    }
+    if (headingTolerance == null) {
+      headingTolerance = Radians.of(m_headingController.getErrorTolerance());
+    }
+    return m_profiles.getCurrentProfile() != DriveProfiles.kDriveToPoint
+        || (m_driveToPointTargetPose.getTranslation().getDistance(getPose().getTranslation())
+                < linearTolerance.in(Meters)
+            && m_driveToPointTargetPose.getRotation().minus(getRotation()).getMeasure().abs(Degrees)
+                < headingTolerance.in(Degrees));
+  }
+
+  public double getYawVelocity() {
+    return m_gyroInputs.yawVelocityRadPerSec;
+  }
+
+  public double getMaxWheelSpeed() {
+    double maxVelo = 0.0;
+    for (var module : m_modules) {
+      maxVelo = Math.max(maxVelo, Math.abs(module.getDriveVelocity()));
+    }
+    return maxVelo;
+  }
+
+  public void setMeshedTargetPose(Pose2d pose) {
+    m_meshedController.setDesiredPose(pose);
+  }
+
+  public void setMeshedAxisLocked(double slope, double intercept, double minX, double maxX) {
+    m_meshedController.setAxisLocked(slope, intercept, minX, maxX);
+  }
+
+  public void setMeshedAxisUnlocked() {
+    m_meshedController.setAxisUnlocked();
   }
 }
