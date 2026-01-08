@@ -10,10 +10,4 @@ public interface DriverControls {
   public double getTurn();
 
   public Trigger resetFieldCentric();
-
-  public Trigger autoAim();
-
-  public Trigger autoShoot();
-
-  public Trigger defaultShoot();
 }

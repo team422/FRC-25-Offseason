@@ -29,19 +29,4 @@ public class DriverControlsXbox implements DriverControls {
   public Trigger resetFieldCentric() {
     return m_controller.start();
   }
-
-  @Override
-  public Trigger autoAim() {
-    return m_controller.rightTrigger();
-  }
-
-  @Override
-  public Trigger autoShoot() {
-    return m_controller.rightBumper();
-  }
-
-  @Override
-  public Trigger defaultShoot() {
-    return m_controller.leftBumper();
-  }
 }

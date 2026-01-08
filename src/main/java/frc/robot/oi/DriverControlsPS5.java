@@ -29,19 +29,4 @@ public class DriverControlsPS5 implements DriverControls {
   public Trigger resetFieldCentric() {
     return m_controller.touchpad();
   }
-
-  @Override
-  public Trigger autoAim() {
-    return m_controller.R2();
-  }
-
-  @Override
-  public Trigger autoShoot() {
-    return m_controller.R1();
-  }
-
-  @Override
-  public Trigger defaultShoot() {
-    return m_controller.L1();
-  }
 }

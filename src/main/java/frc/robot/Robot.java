@@ -1,3 +1,7 @@
+// Copyright (c) FIRST and other WPILib contributors.
+// Open Source Software; you can modify and/or share it under the terms of
+// the WPILib BSD license file in the root directory of this project.
+
 package frc.robot;
 
 import com.ctre.phoenix6.SignalLogger;
@@ -17,36 +21,23 @@ import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
 /**
- * The VM is configured to automatically run this class, and to call the functions corresponding to
- * each mode, as described in the TimedRobot documentation. If you change the name of this class or
- * the package after creating this project, you must also update the build.gradle file in the
- * project.
+ * The methods in this class are called automatically corresponding to each mode, as described in
+ * the TimedRobot documentation. If you change the name of this class or the package after creating
+ * this project, you must also update the Main.java file in the project.
  */
 public class Robot extends LoggedRobot {
-  private RobotContainer m_robotContainer;
+  /**
+   * This function is run when the robot is first started up and should be used for any
+   * initialization code.
+   */
   private Command m_autonomousCommand;
 
   private WPILOGWriter m_writer = new WPILOGWriter();
   private Alert m_writerAlert = new Alert("WPILOGWriter Failed to start", AlertType.kError);
+  private RobotContainer m_robotContainer;
 
   public Robot() {
-    // Record metadata
-    Logger.recordMetadata("ProjectName", BuildConstants.MAVEN_NAME);
-    Logger.recordMetadata("BuildDate", BuildConstants.BUILD_DATE);
-    Logger.recordMetadata("GitSHA", BuildConstants.GIT_SHA);
-    Logger.recordMetadata("GitDate", BuildConstants.GIT_DATE);
-    Logger.recordMetadata("GitBranch", BuildConstants.GIT_BRANCH);
-    switch (BuildConstants.DIRTY) {
-      case 0:
-        Logger.recordMetadata("GitDirty", "All changes committed");
-        break;
-      case 1:
-        Logger.recordMetadata("GitDirty", "Uncomitted changes");
-        break;
-      default:
-        Logger.recordMetadata("GitDirty", "Unknown");
-        break;
-    }
+    Logger.recordMetadata("ProtoBot", "Running"); // Set a metadata value
 
     // Set up data receivers & replay source
     switch (Constants.kCurrentMode) {
@@ -89,7 +80,6 @@ public class Robot extends LoggedRobot {
     SignalLogger.enableAutoLogging(false);
   }
 
-  /** This function is called periodically during all modes. */
   @Override
   public void robotPeriodic() {
     if (Constants.kUseBaseRefreshManager) {
