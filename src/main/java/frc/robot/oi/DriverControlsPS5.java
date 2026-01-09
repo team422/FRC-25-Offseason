@@ -11,37 +11,14 @@ public class DriverControlsPS5 implements DriverControls {
   }
 
   @Override
-  public double getForward() {
-    return -m_controller.getLeftY();
+  public Trigger velocityControl() {
+    return m_controller.circle();
+    // return m_controller.R2();
   }
 
   @Override
-  public double getStrafe() {
-    return -m_controller.getLeftX();
-  }
-
-  @Override
-  public double getTurn() {
-    return -m_controller.getRightX();
-  }
-
-  @Override
-  public Trigger resetFieldCentric() {
-    return m_controller.touchpad();
-  }
-
-  @Override
-  public Trigger autoAim() {
-    return m_controller.R2();
-  }
-
-  @Override
-  public Trigger autoShoot() {
-    return m_controller.R1();
-  }
-
-  @Override
-  public Trigger defaultShoot() {
-    return m_controller.L1();
+  public Trigger voltageControl() {
+    return m_controller.cross();
+    // return m_controller.L2();
   }
 }

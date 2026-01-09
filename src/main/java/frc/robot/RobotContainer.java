@@ -1,29 +1,19 @@
 package frc.robot;
 
+import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
-import frc.robot.Constants.Mode;
 import frc.robot.Constants.Ports;
 import frc.robot.RobotState.RobotAction;
-import frc.robot.commands.drive.DriveCommands;
 import frc.robot.oi.DriverControls;
 import frc.robot.oi.DriverControlsPS5;
-import frc.robot.subsystems.drive.Drive;
-import frc.robot.subsystems.drive.GyroIOPigeon2;
-import frc.robot.subsystems.drive.ModuleIOSim;
-import frc.robot.subsystems.drive.ModuleIOTalonFX;
-import frc.robot.subsystems.turret.Turret;
-import frc.robot.subsystems.turret.flywheel.FlywheelIOKraken;
-import frc.robot.subsystems.turret.flywheel.FlywheelIOSim;
-import frc.robot.subsystems.turret.hood.HoodIOKraken;
-import frc.robot.subsystems.turret.hood.HoodIOSim;
-import frc.robot.subsystems.turret.pivot.PivotIOKraken;
-import frc.robot.subsystems.turret.pivot.PivotIOSim;
+import frc.robot.subsystems.custom.Custom;
+import frc.robot.subsystems.custom.CustomIOKraken;
+import frc.robot.subsystems.custom.CustomIOSim;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
 public class RobotContainer {
-  private Drive m_drive;
-  private Turret m_turret;
+  private Custom m_custom;
 
   private DriverControls m_driverControls;
 
@@ -40,29 +30,10 @@ public class RobotContainer {
 
   /** Configure the subsystems. */
   private void configureSubsystems() {
-    if (Constants.kCurrentMode == Mode.REAL) {
-      m_drive =
-          new Drive(
-              new GyroIOPigeon2(),
-              new ModuleIOTalonFX(0),
-              new ModuleIOTalonFX(1),
-              new ModuleIOTalonFX(2),
-              new ModuleIOTalonFX(3));
-      m_turret =
-          new Turret(
-              new PivotIOKraken(Ports.kPivot, Ports.kMainCanivoreName),
-              new FlywheelIOKraken(
-                  Ports.kTopShooter, Ports.kBottomShooter, Ports.kMainCanivoreName),
-              new HoodIOKraken(Ports.kHood, Ports.kMainCanivoreName));
-    } else if (Constants.kCurrentMode == Mode.SIM) {
-      m_drive =
-          new Drive(
-              new GyroIOPigeon2(),
-              new ModuleIOSim(),
-              new ModuleIOSim(),
-              new ModuleIOSim(),
-              new ModuleIOSim());
-      m_turret = new Turret(new PivotIOSim(), new FlywheelIOSim(), new HoodIOSim());
+    if (RobotBase.isReal()) {
+      m_custom = new Custom(new CustomIOKraken(Ports.kCustomMotor, Ports.kMainCanivoreName));
+    } else {
+      m_custom = new Custom(new CustomIOSim());
     }
   }
 
@@ -71,7 +42,7 @@ public class RobotContainer {
     // Auto commands
 
     // we start here so autofactory won't be null
-    RobotState.startInstance(m_drive, m_turret);
+    RobotState.startInstance(m_custom);
   }
 
   /** Configure the controllers. */
@@ -82,47 +53,27 @@ public class RobotContainer {
 
   /** Configure the button bindings. */
   private void configureButtonBindings() {
-    m_drive.setDefaultCommand(
-        DriveCommands.joystickDrive(
-            m_drive,
-            m_driverControls::getForward,
-            m_driverControls::getStrafe,
-            m_driverControls::getTurn,
-            false));
-
     m_driverControls
-        .autoAim()
+        .velocityControl()
         .onTrue(
             Commands.runOnce(
                 () -> {
-                  if (RobotState.getInstance().getAction() != RobotAction.kAutoAim) {
-                    RobotState.getInstance().updateRobotAction(RobotAction.kAutoAim);
-                  } else {
+                  if (RobotState.getInstance().getAction() == RobotAction.kVelocityControl) {
                     RobotState.getInstance().updateRobotAction(RobotAction.kDefault);
+                  } else {
+                    RobotState.getInstance().updateRobotAction(RobotAction.kVelocityControl);
                   }
                 }));
 
     m_driverControls
-        .autoShoot()
+        .voltageControl()
         .onTrue(
             Commands.runOnce(
                 () -> {
-                  if (RobotState.getInstance().getAction() != RobotAction.kAutoShooting) {
-                    RobotState.getInstance().updateRobotAction(RobotAction.kAutoShooting);
-                  } else {
+                  if (RobotState.getInstance().getAction() == RobotAction.kVoltageControl) {
                     RobotState.getInstance().updateRobotAction(RobotAction.kDefault);
-                  }
-                }));
-
-    m_driverControls
-        .defaultShoot()
-        .onTrue(
-            Commands.runOnce(
-                () -> {
-                  if (RobotState.getInstance().getAction() != RobotAction.kDefaultShooting) {
-                    RobotState.getInstance().updateRobotAction(RobotAction.kDefaultShooting);
                   } else {
-                    RobotState.getInstance().updateRobotAction(RobotAction.kDefault);
+                    RobotState.getInstance().updateRobotAction(RobotAction.kVoltageControl);
                   }
                 }));
   }
