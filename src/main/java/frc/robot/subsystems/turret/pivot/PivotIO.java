@@ -22,4 +22,8 @@ public interface PivotIO {
   public void setAngle(Rotation2d angle);
 
   public void setPID(int slot, double p, double i, double d);
+
+  public void setVoltage(double volts);
+
+  public void zero();
 }

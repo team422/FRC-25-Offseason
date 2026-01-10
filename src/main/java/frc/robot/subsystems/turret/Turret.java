@@ -38,6 +38,7 @@ public class Turret extends SubsystemBase {
     kAiming,
     kAutoShooting,
     kDefaultShooting,
+    kHoming,
   }
 
   public Turret(PivotIO pivot, FlywheelIO flywheel, HoodIO hood) {
@@ -54,6 +55,7 @@ public class Turret extends SubsystemBase {
     map.put(TurretState.kDefaultShooting, this::defaultShootingPeriodic);
     map.put(TurretState.kAiming, this::aimingPeriodic);
     map.put(TurretState.kAutoShooting, this::shootingPeriodic);
+    map.put(TurretState.kHoming, this::homingPeriodic);
 
     m_profiles = new SubsystemProfiles<Turret.TurretState>(map, TurretState.kIdle);
 
@@ -224,6 +226,7 @@ public class Turret extends SubsystemBase {
     m_desiredTopSpeed = 0;
     m_desiredBottomSpeed = 0;
     m_flywheel.setVelocity(m_desiredTopSpeed, m_desiredBottomSpeed);
+    m_pivot.setVoltage(PivotConstants.kIdleVoltage.getAsDouble());
   }
 
   public void aimingPeriodic() {
@@ -242,6 +245,16 @@ public class Turret extends SubsystemBase {
         FlywheelConstants.kTopDefaultShootingSpeed.getAsDouble(),
         FlywheelConstants.kBottomDefaultShootingSpeed.getAsDouble());
     m_hood.setPosition(Rotation2d.fromRotations(HoodConstants.kDefaultShooting.get()));
+  }
+
+  public void homingPeriodic() {
+    m_pivot.setVoltage(RobotBase.isReal() ? PivotConstants.kHomingVoltage.getAsDouble() : PivotConstants.kSimHomingVoltage.getAsDouble());
+
+    if (m_pivotInputs.position == PivotConstants.kMinAngle) {
+      updateState(TurretState.kIdle);
+    }
+
+    m_pivot.zero();
   }
 
   public void autoAim() {

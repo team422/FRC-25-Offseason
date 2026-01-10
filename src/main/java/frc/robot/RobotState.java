@@ -19,7 +19,8 @@ public class RobotState {
     kDefault,
     kAutoAim,
     kAutoShooting,
-    kDefaultShooting
+    kDefaultShooting,
+    kHoming
   }
 
   public static void startInstance(Drive drive, Turret turret) {
@@ -39,6 +40,7 @@ public class RobotState {
     hash.put(RobotAction.kDefaultShooting, () -> {});
     hash.put(RobotAction.kAutoAim, this::autoAimingPeriodic);
     hash.put(RobotAction.kAutoShooting, this::shootingPeriodic);
+    hash.put(RobotAction.kHoming, () -> {});
 
     m_profiles = new SubsystemProfiles<RobotState.RobotAction>(hash, RobotAction.kDefault);
   }
@@ -75,6 +77,9 @@ public class RobotState {
         break;
       case kDefaultShooting:
         newTurretState = TurretState.kDefaultShooting;
+        break;
+      case kHoming:
+        newTurretState = TurretState.kHoming;
       default:
         break;
     }

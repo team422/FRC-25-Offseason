@@ -12,4 +12,10 @@ public class PivotIOReplay implements PivotIO {
 
   @Override
   public void setPID(int slot, double p, double i, double d) {}
+
+  @Override
+  public void setVoltage(double volts) {}
+
+  @Override
+  public void zero() {}
 }

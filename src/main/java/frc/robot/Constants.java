@@ -247,6 +247,14 @@ public final class Constants {
       public static final LoggedTunableNumber kD = new LoggedTunableNumber("Turret/Pivot/D", 0);
       public static final double kGearRatio = 60 / 12;
       public static final double kTolerance = 3;
+      public static final double kMinAngle = 30;
+      public static final double kMaxAngle = 180;
+      public static final double kMinNegativeAngle = -30;
+      public static final double kMaxNegativeAngle = -180;
+      public static final LoggedTunableNumber kHomingVoltage =
+          new LoggedTunableNumber("Turret/Pivot/homingVoltage", -2.);
+      public static final LoggedTunableNumber kIdleVoltage =
+          new LoggedTunableNumber("Pivot/idleVoltage", 0.0);
 
       // sim constants
       public static final LoggedTunableNumber kSimP =
@@ -257,6 +265,7 @@ public final class Constants {
           new LoggedTunableNumber("Turret/Pivot/simD", 0);
       public static final DCMotor kSimGearbox = DCMotor.getKrakenX60Foc(1);
       public static final double kSimMOI = .005;
+      public static final LoggedTunableNumber kSimHomingVoltage = new LoggedTunableNumber("Turret/Pivot/simHomingVoltage", -.02);
     }
   }
 

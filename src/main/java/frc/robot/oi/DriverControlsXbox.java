@@ -44,4 +44,9 @@ public class DriverControlsXbox implements DriverControls {
   public Trigger defaultShoot() {
     return m_controller.leftBumper();
   }
+
+  @Override
+  public Trigger homing() {
+    return m_controller.leftTrigger();
+  }
 }

@@ -16,4 +16,6 @@ public interface DriverControls {
   public Trigger autoShoot();
 
   public Trigger defaultShoot();
+
+  public Trigger homing();
 }

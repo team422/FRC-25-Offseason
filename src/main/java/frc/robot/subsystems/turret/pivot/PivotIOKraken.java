@@ -109,4 +109,14 @@ public class PivotIOKraken implements PivotIO {
 
     m_motor.getConfigurator().apply(config);
   }
+
+  @Override
+  public void setVoltage(double volts) {
+    m_motor.setVoltage(volts);
+  }
+
+  @Override
+  public void zero() {
+    m_motor.setPosition(Rotation2d.fromDegrees(PivotConstants.kMinNegativeAngle).getRotations());
+  }
 }

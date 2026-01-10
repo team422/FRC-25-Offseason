@@ -125,6 +125,18 @@ public class RobotContainer {
                     RobotState.getInstance().updateRobotAction(RobotAction.kDefault);
                   }
                 }));
+
+    m_driverControls
+        .homing()
+        .onTrue(
+            Commands.runOnce(
+                () -> {
+                  if (RobotState.getInstance().getAction() != RobotAction.kHoming) {
+                    RobotState.getInstance().updateRobotAction(RobotAction.kHoming);
+                  } else {
+                    RobotState.getInstance().updateRobotAction(RobotAction.kDefault);
+                  }
+                }));
   }
 
   /**
